@@ -7,6 +7,7 @@ import re
 import subprocess
 
 from aider.coders.editblock_coder import EditBlockCoder # For parsing edits
+from aider.search_enhancer import SearchEnhancer # ADDED IMPORT
 
 class AgentCoder(Coder):
     coder_name = "agent" # For identification, if needed
@@ -22,10 +23,22 @@ class AgentCoder(Coder):
         self.current_deliverable_index = 0
         self.from_coder = from_coder # Store reference to switch back
         self.clarification_history = [] # History for this phase
+        self.search_enhancer = None # ADDED
+        self.web_search_results = None
 
         # Inherit file context from the previous coder
         self.abs_fnames = set(kwargs.get("fnames", []))
         self.abs_read_only_fnames = set(kwargs.get("read_only_fnames", []))
+
+        # Initialize SearchEnhancer if web search is enabled for the agent
+        if hasattr(self.args, 'agent_web_search') and self.args.agent_web_search != "never":
+            try:
+                # Use main_model as the LLM for search-related tasks
+                self.search_enhancer = SearchEnhancer(self.main_model, self.io, self.args)
+                self.io.tool_output("Agent Mode: SearchEnhancer initialized for web searches.")
+            except Exception as e:
+                self.io.tool_error(f"Agent Mode: Failed to initialize SearchEnhancer: {e}")
+                self.search_enhancer = None
 
         self.io.tool_output(f"AgentCoder initialized for task: {self.initial_task}")
         self.io.tool_output("Agent Mode: Starting task clarification phase.")
@@ -60,16 +73,19 @@ class AgentCoder(Coder):
     # Placeholder methods for each phase - to be fleshed out
     def run_clarification_phase(self, user_input=None):
         """Handles the interactive task clarification phase."""
+        current_query_for_web_search = ""
         if not self.clarification_history:
             # First turn
             self.clarification_history.append({"role": "user", "content": self.initial_task})
             prompt_content = self.initial_task
             system_message = prompts.agent_clarification_system.format(initial_task=self.initial_task)
             messages = [{"role": "system", "content": system_message}]
+            current_query_for_web_search = self.initial_task
         else:
             # Subsequent turns
             if user_input:
                 self.clarification_history.append({"role": "user", "content": user_input})
+                current_query_for_web_search = user_input
             else:
                 # This shouldn't happen after the first turn, but handle defensively
                 self.io.tool_error("Agent (Clarification): Expected user input but received none.")
@@ -77,9 +93,53 @@ class AgentCoder(Coder):
                 self.current_phase = "idle"
                 return "Agent stopped due to missing input."
 
+        # === Web search for clarification phase ===
+        web_search_results_str = None
+        if self.search_enhancer and self.args.agent_web_search != "never":
+            search_now_flag = False
+            if self.args.agent_web_search == "always":
+                search_now_flag = True
+            elif self.args.agent_web_search == "on_demand":
+                if self.io.confirm_ask(f"Perform web search for query '{current_query_for_web_search}'?", default='y'):
+                    search_now_flag = True
+
+            if search_now_flag:
+                self.io.tool_output(f"Agent (Clarification - Web Search): Using Browser-Use for: {current_query_for_web_search}")
+                try:
+                    web_search_results_str = self.search_enhancer.perform_browser_task(current_query_for_web_search)
+                    if web_search_results_str:
+                        self.io.tool_output(f"Agent (Clarification - Web Search): Found relevant information.\\n{web_search_results_str[:300]}...")
+                    else:
+                        self.io.tool_output("Agent (Clarification - Web Search): No useful information returned from web task.")
+                except Exception as e:
+                    self.io.tool_error(f"Agent (Clarification - Web Search): Error during Browser-Use task: {e}")
+        # === End Web search for clarification phase ===
+
+        web_context_for_llm = ""
+        if web_search_results_str:
+            web_context_for_llm = f"\\n\\nRelevant information from web search:\\n{web_search_results_str}"
+
+        # Prepare messages for LLM
+        if not self.clarification_history:
+            # This block should ideally not be hit if logic is correct, but for safety
+             messages = [{"role": "system", "content": prompts.agent_clarification_system.format(initial_task=self.initial_task)}]
+             if user_input:
+                 messages.append({"role": "user", "content": user_input + web_context_for_llm})
+             else:
+                 messages.append({"role": "user", "content": self.initial_task + web_context_for_llm})
+        else:
             # Use existing system message and history
-            messages = [{"role": "system", "content": self.clarification_history[0]['content']}] # Reuse initial system prompt
-            messages += self.clarification_history[1:] # Add user/assistant turns
+            system_message_content = self.clarification_history[0].get('content', prompts.agent_clarification_system.format(initial_task=self.initial_task))
+            messages = [{"role": "system", "content": system_message_content}]
+            
+            # Add history, and append web_context to the last user message
+            history_plus_web = list(self.clarification_history[1:])
+            if history_plus_web and history_plus_web[-1]['role'] == 'user' and web_context_for_llm:
+                history_plus_web[-1]['content'] += web_context_for_llm
+            elif web_context_for_llm: # If history is empty or last is not user, append as new message
+                 history_plus_web.append({"role": "user", "content": web_context_for_llm})
+
+            messages += history_plus_web
 
         self.io.tool_output("Agent (Clarification): Thinking...")
         llm_response_content = self._get_llm_response(messages)
@@ -105,7 +165,8 @@ class AgentCoder(Coder):
             return self.run() # Transition to next phase immediately
         else:
             # Ask the user the LLM's question/statement
-            self.io.tool_output(f"Agent (Clarification):\n{llm_response_content}")
+            # We don't need to show the prompt again, just the agent's response
+            self.io.tool_output(f"Agent (Clarification):\\n{llm_response_content}")
             # Return None to signal the main loop to get user input
             return None
 
@@ -118,7 +179,34 @@ class AgentCoder(Coder):
             self.current_phase = "idle"
             return "Agent stopped due to missing clarified task."
 
-        system_message = prompts.agent_planning_system.format(clarified_task=self.clarified_task)
+        # === Web search for planning phase ===
+        web_search_results_str_planning = None
+        if self.search_enhancer and self.args.agent_web_search != "never":
+            search_now_flag = False
+            if self.args.agent_web_search == "always":
+                search_now_flag = True
+            elif self.args.agent_web_search == "on_demand":
+                if self.io.confirm_ask(f"Perform web search for query '{self.clarified_task}' during planning?", default='y'):
+                    search_now_flag = True
+
+            if search_now_flag:
+                self.io.tool_output(f"Agent (Planning - Web Search): Using Browser-Use for: {self.clarified_task[:100]}...")
+                try:
+                    web_search_results_str_planning = self.search_enhancer.perform_browser_task(self.clarified_task)
+                    if web_search_results_str_planning:
+                         self.io.tool_output(f"Agent (Planning - Web Search): Found relevant information.\\n{web_search_results_str_planning[:300]}...")
+                    else:
+                        self.io.tool_output("Agent (Planning - Web Search): No useful information returned from web task.")
+                except Exception as e:
+                    self.io.tool_error(f"Agent (Planning - Web Search): Error during Browser-Use task: {e}")
+        # === End Web search for planning phase ===
+
+        web_context_for_llm = ""
+        if web_search_results_str_planning:
+            web_context_for_llm = f"\\n\\nRelevant information from web search to consider for planning:\\n{web_search_results_str_planning}"
+
+        task_for_planning = self.clarified_task + web_context_for_llm
+        system_message = prompts.agent_planning_system.format(clarified_task=task_for_planning)
         messages = [{"role": "system", "content": system_message}]
         # Optionally, could include self.clarification_history if the prompt needs more context,
         # but agent_planning_system is designed to take the summary.
@@ -528,26 +616,32 @@ class AgentCoder(Coder):
         return self.run()
 
     def run_reporting_phase(self):
-        """Summarizes the work and switches back to the original coder."""
-        self.io.tool_output("Agent (Reporting): Task processing complete.")
+        """Handles the final reporting phase."""
+        self.io.tool_output("Agent (Reporting): Task complete. Generating final report...")
 
-        summary = ["Agent Task Summary:"]
-        summary.append(f"Initial Task: {self.initial_task}")
+        # Close browser if SearchEnhancer was used
+        if self.search_enhancer:
+            self.io.tool_output("Agent (Reporting): Closing browser used by SearchEnhancer...")
+            self.search_enhancer.close_browser()
+
+        # Summarize the work done
+        report = "## Agent Task Report\n\n"
+        report += f"**Initial Task:** {self.initial_task}\n\n"
 
         if self.plan and self.plan.get("deliverables"):
-            summary.append("\nImplemented Deliverables:")
+            report += "\nImplemented Deliverables:\n"
             for i, deliverable in enumerate(self.plan["deliverables"]):
                 # Assuming all deliverables were attempted up to current_deliverable_index
                 status = "Completed" if i < self.current_deliverable_index else "Not Reached"
                 if self.current_phase == "idle" and i >= self.current_deliverable_index and self.current_deliverable_index < len(self.deliverables):
                     status = "Failed/Stopped" # If agent stopped mid-execution
-                summary.append(f"  - {deliverable} ({status})")
+                report += f"  - {deliverable} ({status})\n"
         else:
-            summary.append("No deliverables were planned or executed.")
+            report += "No deliverables were planned or executed.\n"
 
         # TODO: Add more details like files changed, test results summary if available
 
-        self.io.tool_output("\n".join(summary))
+        self.io.tool_output(report)
         
         self.current_phase = "idle" # Agent is done
 
