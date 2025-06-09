@@ -187,6 +187,22 @@ class Coder:
             kwargs = use_kwargs
             from_coder.ok_to_warm_cache = False
 
+        # Check if AgentCoder should be used based on --agent-coder flag
+        args = kwargs.get('args')
+        if args and hasattr(args, 'agent_coder') and args.agent_coder:
+            # Extract initial task from message if available
+            initial_task = "No task provided."
+            if args and hasattr(args, 'message') and args.message:
+                initial_task = args.message
+            
+            # Add initial_task to kwargs for AgentCoder
+            kwargs['initial_task'] = initial_task
+            
+            # args will be passed via **kwargs if present in kwargs
+            res = coders.AgentCoder(main_model, io, **kwargs)
+            res.original_kwargs = dict(kwargs)
+            return res
+
         for coder in coders.__all__:
             if hasattr(coder, "edit_format") and coder.edit_format == edit_format:
                 # args will be passed via **kwargs if present in kwargs

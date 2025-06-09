@@ -102,11 +102,12 @@ class MarkdownStream:
     min_delay = 1.0 / 20  # Minimum time between updates (20fps)
     live_window = 6  # Number of lines to keep visible at bottom during streaming
 
-    def __init__(self, mdargs=None):
+    def __init__(self, mdargs=None, live=None):
         """Initialize the markdown stream.
 
         Args:
             mdargs (dict, optional): Additional arguments to pass to rich Markdown renderer
+            live (rich.live.Live, optional): An existing Live instance to use.
         """
         self.printed = []  # Stores lines that have already been printed
 
@@ -115,9 +116,8 @@ class MarkdownStream:
         else:
             self.mdargs = dict()
 
-        # Defer Live creation until the first update.
-        self.live = None
-        self._live_started = False
+        self.live = live
+        self._live_started = self.live is not None
 
     def _render_markdown_to_lines(self, text):
         """Render markdown text to a list of lines.
@@ -164,7 +164,7 @@ class MarkdownStream:
         The live window doesn't play nice with terminal scrollback.
         """
         # On the first call, stop the spinner and start the Live renderer
-        if not getattr(self, "_live_started", False):
+        if not self._live_started:
             self.live = Live(Text(""), refresh_per_second=1.0 / self.min_delay)
             self.live.start()
             self._live_started = True

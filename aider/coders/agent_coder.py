@@ -1,6 +1,8 @@
 from aider.coders.base_coder import Coder
 from aider.commands import SwitchCoder # May need to adjust import based on final location
 from aider import prompts, urls, utils # Added utils
+from aider.io import InputOutput
+from aider.mdstream import MarkdownStream
 import json # For parsing LLM plan output
 import os
 import re
@@ -43,7 +45,7 @@ class AgentCoder(Coder):
     coder_name = "agent" # For identification, if needed
     announce_after_switch = False # Agent will manage its own announcements
 
-    def __init__(self, main_model, io, repo, from_coder, **kwargs):
+    def __init__(self, main_model, io, **kwargs):
         # Pop AgentCoder-specific arguments from kwargs
         self.initial_task = kwargs.pop("initial_task", "No task provided.")
         self.project_context_token_budget = kwargs.pop("project_context_token_budget", None)
@@ -72,6 +74,9 @@ class AgentCoder(Coder):
         args_for_super = kwargs.pop('args', None)
 
         # from_coder is for AgentCoder internal use, not passed to Coder.__init__
+        from_coder = kwargs.pop("from_coder", None)
+        repo = kwargs.pop("repo", None)
+        
         super().__init__(main_model, io, args_for_super, repo=repo, **kwargs)
         # self.initial_task is already set by pop
         self.current_phase = "idle" # Phases: idle, clarification, planning, test_design, approval, execution, reporting
@@ -95,8 +100,8 @@ class AgentCoder(Coder):
         self.enable_planner_executor_arch = False
         self.planner_model_name = None
         self.executor_model_name = None
-        self.planner_llm = None # Will hold the planner model instance
-        self.executor_llm = None # Will hold the executor model instance
+        self.planner_llm = self.main_model
+        self.executor_llm = self.main_model
         self.search_enhancer = None
 
         # Store new agent config from args
@@ -176,6 +181,9 @@ class AgentCoder(Coder):
         else:
             self.planner_llm = self.main_model
             self.executor_llm = self.main_model
+
+        # Initialize mdstream attribute
+        self.mdstream = self.io.get_assistant_mdstream()
 
         # Initialize SearchEnhancer if web search is enabled for the agent
         if hasattr(self.args, 'agent_web_search') and self.args.agent_web_search != "never":
@@ -1305,15 +1313,17 @@ class AgentCoder(Coder):
                                 return json.loads(match.group(1).strip())
                             except json.JSONDecodeError:
                                 pass
-                
-                if attempt_count < max_attempts:
-                            self.io.tool_warning(f"Failed to parse JSON response (attempt {attempt_count}/{max_attempts}). Retrying...")
-                            continue
+                    
+                    # If we are here, JSON parsing failed
+                    if attempt_count < max_attempts:
+                        self.io.tool_warning(f"Failed to parse JSON response (attempt {attempt_count}/{max_attempts}). Retrying...")
+                        continue
+                    else:
+                        self.io.tool_error("Failed to parse JSON after all attempts.")
+                        return None
                 else:
-                            self.io.tool_error("Failed to parse JSON after all attempts.")
-                            return None
-                
-                return response_content
+                    # Not expecting JSON, so we return the raw content
+                    return response_content
 
             except Exception as e:
                 self.io.tool_error(f"Error communicating with LLM (attempt {attempt_count}/{max_attempts}): {e}")
