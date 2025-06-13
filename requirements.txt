@@ -372,7 +372,7 @@ pycodestyle==2.11.1
     # via flake8
 pycparser==2.22
     # via cffi
-pydantic==2.11.4
+pydantic>=1.10
     # via
     #   anthropic
     #   browser-use
@@ -429,7 +429,7 @@ referencing==0.36.2
     #   jsonschema-specifications
 regex==2024.11.6
     # via tiktoken
-requests==2.32.3
+requests==2.31.0
     # via
     #   -r requirements/requirements.in
     #   browser-use
@@ -437,7 +437,7 @@ requests-oauthlib==2.0.0
     # via kubernetes
 requests-toolbelt==1.0.0
     # via langsmith
-rich==13.5.3
+rich==13.5.2
     # via
     #   -r requirements/requirements.in
     #   chromadb
@@ -577,6 +577,26 @@ pytest-random-order==1.1.0
     # via
     #   -r requirements/requirements.in
 colorama==0.4.6
+    # via
+    #   -r requirements/requirements.in
+    #   litellm
+scripter==1.3.1
+    # via
+    #   -r requirements/requirements.in
+    #   litellm
+py-repo-root>=0.0.2
+    # via
+    #   -r requirements/requirements.in
+    #   litellm
+unstructured
+    # via
+    #   -r requirements/requirements.in
+    #   litellm
+pysqlite3-binary==0.5.2.0
+    # via
+    #   -r requirements/requirements.in
+    #   chromadb
+openai-forward
     # via
     #   -r requirements/requirements.in
     #   litellm

@@ -176,3 +176,96 @@ See the [installation instructions](https://aider.chat/docs/install.html) and [u
 - *"Aider ... is the tool to benchmark against."* — [BeetleB on Hacker News](https://news.ycombinator.com/item?id=43930201)
 - *"aider is really cool"* — [kache on X](https://x.com/yacineMTB/status/1911224442430124387)
 
+## AgentCoder Usage
+
+### Prerequisites
+
+1. Obtain a Google Gemini API key and export it in your shell:
+
+```bash
+export GEMINI_API_KEY="YOUR_API_KEY"
+```
+
+2. Install `aider` (inside an activated virtual‐env):
+
+```bash
+pip install -e .
+```
+
+---
+
+### 1 · Interactive CLI workflow
+
+```bash
+aider --model gemini/gemini-1.5-flash \
+      --agent-headless --agent-auto-approve \
+      --yes --no-auto-commits
+```
+
+This launches the normal aider REPL.  At the prompt:
+
+```
+/agent Create a simple terminal-based snake game in Python using curses. Include movement with arrow keys, food spawning, score tracking and collision detection with walls or self.
+/exit
+```
+
+* `/agent` switches to `AgentCoder` which autonomously plans, writes code and (optionally) tests.
+* `--agent-headless --agent-auto-approve` means it runs without human confirmation.
+
+All files it creates/edits appear in the current working directory (or git repo if present).
+
+---
+
+### 2 · Programmatic invocation
+
+```python
+import argparse, os, tempfile, sys
+from pathlib import Path
+
+sys.path.append("aider")  # adjust if aider is installed site-wide
+
+from aider.coders.agent_coder import AgentCoder
+from aider.io import InputOutput
+from aider import models
+
+os.environ.setdefault("GEMINI_API_KEY", "YOUR_API_KEY")
+
+project_dir = tempfile.mkdtemp()
+placeholder = Path(project_dir)/"placeholder.py"  # at least one file is required
+placeholder.touch()
+
+args = argparse.Namespace(
+    model="gemini/gemini-1.5-flash",
+    agent_coder=True,
+    agent_headless=True,
+    agent_auto_approve=True,
+    fnames=[str(placeholder)],
+)
+
+io = InputOutput(pretty=False, yes=True)
+main_model = models.Model(args.model)
+
+task = (
+    "Create a simple terminal-based snake game in Python using curses. "
+    "Include movement with arrow keys, food spawning, score tracking and "
+    "collision detection with walls or self."
+)
+
+agent = AgentCoder(main_model=main_model, io=io, args=args, initial_task=task)
+agent.run()
+
+print("Files created:", list(Path(project_dir).iterdir()))
+```
+
+The `initial_task` is supplied when constructing the `AgentCoder`.  Calling `agent.run()` kicks off the autonomous flow exactly as in the CLI.
+
+---
+
+### Flags of interest
+
+* `--agent-hierarchical-planning {none,deliverables_only}` – depth of task decomposition (default `none`).
+* `--agent-generate-tests {none,descriptions,all_code}` – automatically generate unit/integration tests.
+* `--agent-output-plan-only` – generate a plan & test strategy JSON and exit without execution.
+
+See `aider --help` for the full set of options.
+

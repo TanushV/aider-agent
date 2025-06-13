@@ -221,7 +221,7 @@ class AgentCoder(Coder):
 |---------|------|---------|-------------|
 | `agent_hierarchical_planning` | str | 'none' | Planning mode |
 | `agent_generate_tests` | str | 'none' | Test generation mode |
-| `agent_max_decomposition_depth` | int | 2 | Maximum decomposition depth |
+| `agent_max_decomposition_depth` | int | 3 | Maximum decomposition depth |
 | `agent_headless` | bool | False | Run without interaction |
 | `agent_auto_approve` | bool | False | Skip approval phase |
 | `agent_enable_planner_executor_arch` | bool | False | Use separate models |

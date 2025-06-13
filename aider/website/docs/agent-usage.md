@@ -64,7 +64,7 @@ aider --agent-coder \
   - `deliverables_only`: Plan major deliverables only
   - `full_two_level`: Full hierarchical decomposition
 
-- `--agent-max-decomposition-depth N`: Maximum depth for task decomposition (default: 2)
+- `--agent-max-decomposition-depth N`: Maximum depth for task decomposition (default: 3)
 
 #### Test Generation
 

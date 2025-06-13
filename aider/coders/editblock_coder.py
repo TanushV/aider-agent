@@ -126,6 +126,13 @@ Just reply with fixed versions of the {blocks} above that failed to match.
         raise ValueError(res)
 
 
+# backcompat: re-export utility at module level for external callers and tests
+
+def find_original_update_blocks(*args, **kwargs):  # noqa: N802
+    """Backward-compatibility shim that forwards to utils.find_original_update_blocks."""
+    return utils.find_original_update_blocks(*args, **kwargs)
+
+
 def main():
     history_md = Path(sys.argv[1]).read_text()
     if not history_md:

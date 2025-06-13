@@ -30,9 +30,12 @@ QUAD_BACKTICKS = "`" * 4
 # UPDATED_ERR = ">>>>>>> REPLACE"
 
 # New, more flexible edit block format markers (allow variations)
-HEAD = r"^<{5,9}\s*SEARCH\s*(.*)$\n|```diff\n--- a/(.*?)\n\+\+\+ b/\1\n"
-DIVIDER = r"^[-=~\*]{5,}$\n"
-UPDATED = r"^>{5,9}\s*REPLACE\s*$\n"
+# Make the regexes tolerant to the presence or absence of a trailing newline
+# at the end of the marker line. The previous version required a newline
+# and therefore failed when lines were processed with `.strip()`.
+HEAD = r"^<{5,9}\s*SEARCH\s*(.*)$|```diff\n--- a/(.*?)\n\+\+\+ b/\1"
+DIVIDER = r"^[-=~\*]{5,}$"
+UPDATED = r"^>{5,9}\s*REPLACE\s*$"
 
 HEAD_FMT = "<<<<<<< SEARCH{}"
 DIVIDER_FMT = "======="

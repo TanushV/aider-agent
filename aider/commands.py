@@ -1606,12 +1606,15 @@ class Commands:
         
         # Prepare kwargs for AgentCoder, ensuring to pass along necessary context
         # from the current coder (self.coder).
+        import argparse
         kwargs_for_agent = {
             "initial_task": task_description,
             # Pass along fnames and read_only_fnames from the current coder
-            # so the agent starts with the same file context if any.
-            "fnames": list(self.coder.abs_fnames), # Ensure it's a list copy
-            "read_only_fnames": list(self.coder.abs_read_only_fnames), # Ensure it's a list copy
+            "fnames": list(self.coder.abs_fnames),  # Ensure it's a list copy
+            "read_only_fnames": list(self.coder.abs_read_only_fnames),  # Ensure it's a list copy
+            # Provide a minimal args namespace indicating agent_coder mode so
+            # Coder.create picks AgentCoder correctly.
+            "args": argparse.Namespace(agent_coder=True, agent_headless=True, agent_auto_approve=True, message=task_description),
         }
         # The `from_coder` argument in SwitchCoder will handle passing the current coder instance.
         raise SwitchCoder(AgentCoder, **kwargs_for_agent)

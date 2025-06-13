@@ -107,11 +107,11 @@ class AgentCoder(Coder):
         # Store new agent config from args
         self.agent_hierarchical_planning = "none"
         self.agent_generate_tests = "none"
-        self.agent_max_decomposition_depth = 2 # Default if not in args
+        self.agent_max_decomposition_depth = 3 # Default if not in args
         if self.args:
             self.agent_hierarchical_planning = getattr(self.args, 'agent_hierarchical_planning', 'none')
             self.agent_generate_tests = getattr(self.args, 'agent_generate_tests', 'none')
-            self.agent_max_decomposition_depth = getattr(self.args, 'agent_max_decomposition_depth', 2)
+            self.agent_max_decomposition_depth = getattr(self.args, 'agent_max_decomposition_depth', 3)
             self.output_plan_only = getattr(self.args, 'agent_output_plan_only', False)
             self.enable_planner_executor_arch = getattr(self.args, 'agent_enable_planner_executor_arch', False)
             self.planner_model_name = getattr(self.args, 'agent_planner_model', None)
